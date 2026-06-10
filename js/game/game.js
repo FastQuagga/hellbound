@@ -20,6 +20,19 @@ const DECOR_DEFS = {
   pillar:  { sprite: 'pillar', h: 0.55, radius: 0.2, solid: true, bright: false },
   corpse0: { sprite: 'corpse0', h: 0.45, radius: 0.2, solid: false, bright: false },
   corpse1: { sprite: 'corpse1', h: 0.85, radius: 0.2, solid: false, bright: false },
+  // — пропсы (эксперимент: пропсы), спрайты из sprites_props.js —
+  skull_pile:     { sprite: 'skull_pile', h: 0.34, radius: 0, solid: false, bright: false },
+  bones:          { sprite: 'bones', h: 0.2, radius: 0, solid: false, bright: false },
+  rubble:         { sprite: 'rubble', h: 0.26, radius: 0, solid: false, bright: false },
+  shells_spent:   { sprite: 'shells_spent', h: 0.08, radius: 0, solid: false, bright: false },
+  blood_pool:     { sprite: 'blood_pool', h: 0.07, radius: 0, solid: false, bright: false },
+  cable_coil:     { sprite: 'cable_coil', h: 0.22, radius: 0, solid: false, bright: false },
+  monitor_broken: { sprite: 'monitor_broken', h: 0.42, radius: 0, solid: false, bright: false },
+  candle:         { frames: ['candle0', 'candle1'], fps: 6, h: 0.3, radius: 0, solid: false, bright: true },
+  lamp_red:       { frames: ['lamp_red0', 'lamp_red1'], fps: 2, h: 0.62, radius: 0.14, solid: true, bright: true },
+  hanging_chain:  { sprite: 'hanging_chain', h: 0.95, radius: 0, solid: false, bright: false },
+  gore_hang:      { sprite: 'gore_hang', h: 0.95, radius: 0, solid: false, bright: false },
+  crate_small:    { sprite: 'crate_small', h: 0.5, radius: 0.3, solid: true, bright: false },
 };
 
 const KEY_NAMES = { blue: 'СИНЯЯ', yellow: 'ЖЁЛТАЯ', red: 'КРАСНАЯ' };

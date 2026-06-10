@@ -17,6 +17,7 @@ import { generateSprites as genWeapons } from './assets/sprites_weapons.js';
 import { generateSprites as genItems } from './assets/sprites_items.js';
 import { generateSprites as genFx } from './assets/sprites_fx.js';
 import { generateSprites as genUi } from './assets/sprites_ui.js';
+import { generateSprites as genProps, generatePropTextures } from './assets/sprites_props.js';
 import { SoundEngine } from './assets/sounds.js';
 import { MusicPlayer } from './assets/music.js';
 
@@ -50,6 +51,7 @@ async function init() {
     ['ТЕКСТУРЫ', null],
     ['ЗОМБИ', genEnemies1], ['ДЕМОНЫ', genEnemies2], ['БАРОНЫ', genEnemies3],
     ['ОРУЖИЕ', genWeapons], ['ПРЕДМЕТЫ', genItems], ['ЭФФЕКТЫ', genFx], ['ИНТЕРФЕЙС', genUi],
+    ['ПРОПСЫ', genProps],
   ];
   let textures = new Map();
   for (const [label, gen] of stages) {
@@ -58,6 +60,10 @@ async function init() {
     if (!gen) { textures = generateTextures(); continue; }
     for (const [k, v] of gen()) sprites.set(k, v);
   }
+  // Стенные текстуры-панно (эксперимент: пропсы) — поверх базового набора текстур.
+  boot.textContent = 'СОЗДАНИЕ: ПАННО…';
+  await nextFrame();
+  for (const [k, v] of generatePropTextures(textures)) textures.set(k, v);
   boot.textContent = 'ЗВУК И МУЗЫКА…';
   await nextFrame();
 

@@ -354,6 +354,75 @@ function drawSmoke(g, rng, mx, my) {
   }
 }
 
+function eyeGlow(g, x, y, big) {
+  const hot = big ? FIRE[3] : BLOOD[3];
+  const mid = big ? FIRE[2] : BLOOD[2];
+  px(g, x - 1, y, mid);
+  px(g, x, y, hot);
+  px(g, x + 1, y, mid);
+  if (big) {
+    px(g, x, y - 1, FIRE[1]);
+    px(g, x, y + 1, FIRE[0]);
+  }
+}
+
+function bloodSpurt(g, rng, cx, cy, n, spreadX, spreadY) {
+  for (let i = 0; i < n; i++) {
+    const x = Math.round(cx + (rng() - 0.5) * spreadX);
+    const y = Math.round(cy + (rng() - 0.5) * spreadY);
+    px(g, x, y, BLOOD[1 + ((rng() * 3) | 0)]);
+    if (rng() < 0.35) px(g, x, y + 1, BLOOD[0]);
+  }
+}
+
+function muzzleWash(g, rng, s, mx, my) {
+  for (let r = 0; r < 4; r++) {
+    hl(g, mx - 10 + r, my + 6 + r * 2, 20 - r * 2, r < 2 ? FIRE[2] : FIRE[1]);
+  }
+  for (let i = 0; i < 12; i++) {
+    const x = mx - 15 + ((rng() * 31) | 0);
+    const y = my - 8 + ((rng() * 22) | 0);
+    if (((x + y) & 1) === 0) px(g, x, y, rng() < 0.45 ? FIRE[3] : FIRE[1]);
+  }
+  const u = s.uni;
+  hl(g, CX - 9, 28, 18, s.serg ? METAL[4] : u[4]);
+  px(g, CX - 6, 23, FIRE[2]);
+  px(g, CX + 6, 23, FIRE[1]);
+}
+
+function polishTrooper(g, rng, s, suffix) {
+  const u = s.uni;
+  const standing = suffix.startsWith('walk') || suffix.startsWith('attack') || suffix === 'pain0' || suffix === 'die0' || suffix === 'die1';
+  if (standing) {
+    // Красные точки глаз и рим-лайт по левому плечу/ботинкам читают силуэт издалека.
+    eyeGlow(g, CX - 3 + (suffix === 'pain0' ? 1 : 0), 20, suffix.startsWith('attack'));
+    eyeGlow(g, CX + 3 + (suffix === 'pain0' ? 1 : 0), 20, suffix.startsWith('attack'));
+    vl(g, CX - 11 - (s.serg ? 1 : 0), 27, 11, u[4]);
+    px(g, CX - 12 - (s.serg ? 1 : 0), 28, u[4]);
+    hl(g, CX - 9 - (s.serg ? 1 : 0), 43, 7, u[3]);
+    px(g, CX - 8 - (s.serg ? 1 : 0), 61, BOOT[2]);
+    px(g, CX + 4 + (s.serg ? 1 : 0), 61, BOOT[2]);
+    speck(g, rng, CX - 10, 28, 20, 16, [u[0], u[1], BLOOD[0]], s.serg ? 8 : 6);
+  }
+  if (suffix === 'attack1') {
+    muzzleWash(g, rng, s, CX - 2, 31);
+    drawFlash(g, rng, CX - 2, 31, true);
+  }
+  if (suffix === 'pain0') {
+    bloodSpurt(g, rng, CX - 6, 32, 16, 18, 16);
+    vl(g, CX - 2, 33, 10, BLOOD[1]);
+    px(g, CX - 2, 44, BLOOD[2]);
+  }
+  if (suffix === 'die0' || suffix === 'die1') bloodSpurt(g, rng, CX, 32, 26, 28, 22);
+  if (suffix === 'die2' || suffix === 'die3') bloodSpurt(g, rng, 24, 51, 20, 30, 14);
+  if (suffix === 'die4') {
+    for (let i = 0; i < 9; i++) {
+      hl(g, 16 + ((rng() * 12) | 0), 58 + (i % 5), 12 + ((rng() * 13) | 0), i & 1 ? BLOOD[0] : BLOOD[2]);
+    }
+    px(g, 41, 51, METAL[4]); // блик на выроненном оружии
+  }
+}
+
 // ===== Сборка стоячей фигуры =====
 // q: { dy, sway, legL/legR:{dx,lift}, bentLegs, pose:'hold'|'aim'|'pain'|'thrown',
 //      gunLow, headDx, headDy, mouth, eyes, burst, drip }
@@ -618,6 +687,7 @@ export function generateSprites() {
       frames[suffix].pre(g, rng);
       outlinePass(cv, s.outline);
       if (frames[suffix].post) frames[suffix].post(g, rng);
+      polishTrooper(g, rng, s, suffix);
       map.set(key, cv);
     }
   }

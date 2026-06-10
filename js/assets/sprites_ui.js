@@ -444,6 +444,46 @@ function applyBlood(s, tier, expr) {
   }
 }
 
+function enhanceFace(s, look, expr, tier) {
+  // Мелкие пиксели читаются как выражение в HUD: зрачковый блик, шрамы, зубы, броня.
+  if (expr !== 'dead' && expr !== 'pain') {
+    put(s, 12 + look * 2, 14, '#ffffff');
+    if (tier < 3) put(s, 22 + look * 2, 14, '#ffffff');
+  }
+  if (expr === 'pain') {
+    hline(s, 12, 23, 30, BLD[1]);
+    put(s, 15, 25, '#ffffff');
+    put(s, 20, 25, '#ffffff');
+  } else if (expr === 'grin') {
+    for (let x = 12; x <= 24; x += 2) put(s, x, 25, '#ffffff');
+    hline(s, 11, 24, 27, '#5c4632');
+    put(s, 10, 23, SKIN[1]);
+    put(s, 25, 23, SKIN[1]);
+  }
+  if (tier >= 1) {
+    put(s, 8, 18, BLD[1]);
+    put(s, 9, 19, BLD[2]);
+  }
+  if (tier >= 2) {
+    hline(s, 21, 24, 10, BLD[2]);
+    put(s, 23, 11, BLD[3]);
+  }
+  if (tier >= 3) {
+    vline(s, 27, 16, 23, BLD[0]);
+    put(s, 26, 18, BLD[2]);
+  }
+  if (tier >= 4 || expr === 'dead') {
+    hline(s, 9, 27, 5, BLD[0]);
+    put(s, 13, 6, BLD[2]);
+    put(s, 21, 8, BLD[2]);
+    hline(s, 14, 21, 32, BLD[1]);
+  }
+  // Потёртая броня на вороте.
+  put(s, 8, 37, ARM[3]);
+  put(s, 27, 37, ARM[0]);
+  hline(s, 5, 31, 39, ARM[0]);
+}
+
 function makeFace(look, expr, tier) {
   const s = surface(36, 40);
   drawHeadBase(s);
@@ -455,6 +495,7 @@ function makeFace(look, expr, tier) {
   drawNose(s, expr);
   drawMouth(s, expr);
   applyBlood(s, tier, expr);
+  enhanceFace(s, look, expr, tier);
   return toCanvas(s);
 }
 
@@ -640,6 +681,22 @@ function makeLogo() {
     put(s, x, y, rng() < 0.5 ? FIRE[3] : FIRE[2]);
     if (rng() < 0.3) put(s, x, y + 1, FIRE[1]);
   }
+  // Заклёпки и подплавленные капли на нижней кромке букв.
+  for (let x = 18; x < W - 16; x += 19) {
+    for (let y = 12; y < 86; y += 18) {
+      if (!m(x, y)) continue;
+      put(s, x, y, MET[4]);
+      put(s, x + 1, y, MET[1]);
+      put(s, x, y + 1, MET[1]);
+    }
+  }
+  for (let x = 0; x < W; x++) {
+    for (let y = 82; y < 94; y++) {
+      if (!m(x, y) || m(x, y + 1) || hash2(x, y, 57) > 0.06) continue;
+      const len = 2 + ((hash2(x, y, 58) * 5) | 0);
+      for (let j = 0; j < len; j++) put(s, x, y + j, j < 2 ? FIRE[2] : FIRE[1]);
+    }
+  }
   return toCanvas(s);
 }
 
@@ -815,6 +872,26 @@ function makeTitleBg() {
       if (rng() < 0.3) put(s, cx - 1, cy, '#3a1208');
     }
   }
+  // Передний план: чёрные зубцы скал, сломанные трубы и огни базы.
+  for (let x = 0; x < W; x++) {
+    const h = 8 + Math.round(Math.sin(x * 0.045) * 4) + ((hash2(x, 0, 59) * 6) | 0);
+    for (let y = H - h; y < H; y++) put(s, x, y, '#080405');
+    if ((x % 37) === 0) {
+      vline(s, x, H - h - 20, H - h, '#0a0a0d');
+      hline(s, x - 4, x + 5, H - h - 12, '#0a0a0d');
+    }
+  }
+  for (let i = 0; i < 36; i++) {
+    const x = 24 + ((rng() * 180) | 0);
+    const y = 170 + ((rng() * 38) | 0);
+    put(s, x, y, rng() < 0.5 ? FIRE[2] : '#2cab2c');
+    if (rng() < 0.3) put(s, x + 1, y, FIRE[0]);
+  }
+  for (let i = 0; i < 28; i++) {
+    const a = rng() * Math.PI * 2;
+    const d = PR + 12 + rng() * 32;
+    put(s, Math.round(PCX + Math.cos(a) * d), Math.round(PCY + Math.sin(a) * d), rng() < 0.5 ? FIRE[3] : FIRE[1]);
+  }
   // --- Виньетка по углам (дизеринг) ---
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
@@ -924,6 +1001,28 @@ function makeInterBg() {
   put(s, 42, 136, '#2a4a2a'); hline(s, 41, 43, 137, '#2a4a2a'); hline(s, 40, 44, 138, '#1c4a1c');
   hline(s, 404, 202, 408, '#1c4a1c'); // штрих выхода
   vline(s, 406, 200, 204, '#1c4a1c');
+  // Подсвеченный путь прохождения и опасные зоны.
+  const route = [[42, 137], [108, 138], [166, 128], [173, 220], [254, 208], [310, 151], [330, 198], [406, 202]];
+  for (let i = 0; i < route.length - 1; i++) {
+    const [x0, y0] = route[i];
+    const [x1, y1] = route[i + 1];
+    const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+    for (let j = 0; j <= steps; j += 3) {
+      const x = Math.round(x0 + ((x1 - x0) * j) / steps);
+      const y = Math.round(y0 + ((y1 - y0) * j) / steps);
+      put(s, x, y, '#274a27');
+      if ((j & 1) === 0) put(s, x + 1, y, '#1c341c');
+    }
+  }
+  for (const [cx, cy, r] of [[256, 208, 18], [330, 198, 22], [384, 204, 12]]) {
+    for (let y = cy - r; y <= cy + r; y++) {
+      for (let x = cx - r; x <= cx + r; x++) {
+        const d = Math.hypot(x - cx, y - cy);
+        if (d > r || d < r - 2 || hash2(x, y, 61) > 0.45) continue;
+        put(s, x, y, '#3d0a0a');
+      }
+    }
+  }
 
   // --- Брызги крови по краям планшета ---
   const rng = mulberry32(0x17e2);

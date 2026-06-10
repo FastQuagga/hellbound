@@ -50,7 +50,9 @@ function px(ctx, x, y, color, alpha = 1) {
   x = Math.floor(x);
   y = Math.floor(y);
   if (x < 0 || y < 0 || x >= ctx.canvas.width || y >= ctx.canvas.height) return;
-  ctx.fillStyle = alpha >= 1 ? color : rgba(color, alpha);
+  if (alpha <= 0) return;
+  const a = alpha >= 1 ? 1 : Math.max(0.52, alpha);
+  ctx.fillStyle = a >= 1 ? color : rgba(color, a);
   ctx.fillRect(x, y, 1, 1);
 }
 
@@ -96,7 +98,7 @@ function fxBall(ctx, cx, cy, r, tones, seed, opts = {}) {
       if (d > rr) {
         // дизеренный ореол свечения (полупрозрачность допустима у огня/плазмы)
         if (halo > 0 && d < rr + halo && ((x + y) & 1) === 0) {
-          px(ctx, x, y, haloColor, d < rr + halo * 0.5 ? 0.3 : 0.15);
+          px(ctx, x, y, haloColor, d < rr + halo * 0.5 ? 0.56 : 0.52);
         }
         continue;
       }
@@ -330,7 +332,7 @@ function buildRocket() {
   const rng = mulberry32(seed);
   // клочья дыма за соплом (полупрозрачный дым допустим)
   for (let i = 0; i < 12; i++) {
-    px(ctx, 2 + Math.floor(rng() * 7), 13 + Math.floor(rng() * 7), SMOKE[1], 0.38);
+    px(ctx, 2 + Math.floor(rng() * 7), 13 + Math.floor(rng() * 7), SMOKE[1], 0.54);
   }
   // выхлопное пламя
   flameTail(ctx, 11, 16, 3, FIRE, seed + 1, 7, 0.8);
@@ -395,7 +397,7 @@ function buildPuff(f) {
   const tones = f === 0 ? SMOKE.slice(1) : f === 3 ? SMOKE.slice(0, 3) : SMOKE;
   cloud(ctx, 16, cy, r, tones, seed, {
     mode: 'smoke', lumps: 4 + f, rough: 0.75,
-    density: 1 - f * 0.16, alpha: 0.95 - f * 0.17,
+    density: 1 - f * 0.16, alpha: 0.95 - f * 0.14,
   });
   if (f === 0) {
     // свежий горячий дымок — пара светлых пикселей в ядре
@@ -472,7 +474,7 @@ function buildExplosion(f) {
     cloud(ctx, 32, 32, 22, ['#141419', '#241d18', '#3a2417'], seed, {
       mode: 'smoke', lumps: 8, rough: 0.8, density: 0.5, alpha: 0.6,
     });
-    sparks(ctx, 32, 32, 8, 20, ['#7a1f08', '#c44d12'], seed + 5, 4, 0.5);
+    sparks(ctx, 32, 32, 8, 20, ['#7a1f08', '#c44d12'], seed + 5, 4, 0.54);
   }
   return ctx;
 }
@@ -540,13 +542,82 @@ function buildBfgHit(f) {
   return ctx;
 }
 
+function shockRing(ctx, cx, cy, r, colorA, colorB, seed) {
+  const rng = mulberry32(seed);
+  for (let i = 0; i < 64; i++) {
+    const a = (i / 64) * Math.PI * 2;
+    const rr = r + (rng() - 0.5) * 1.8;
+    const x = Math.round(cx + Math.cos(a) * rr);
+    const y = Math.round(cy + Math.sin(a) * rr);
+    if ((i & 1) === 0) px(ctx, x, y, colorA, 0.58);
+    else px(ctx, x, y, colorB, 0.54);
+  }
+}
+
+function cinderTrail(ctx, cx, cy, seed, n, colors) {
+  const rng = mulberry32(seed);
+  for (let i = 0; i < n; i++) {
+    const x = Math.round(cx - 2 - rng() * 12);
+    const y = Math.round(cy + (rng() - 0.5) * 11);
+    px(ctx, x, y, colors[(rng() * colors.length) | 0], 0.58);
+    if (rng() < 0.35) px(ctx, x - 1, y + 1, colors[0], 0.54);
+  }
+}
+
+function polishFx(key, ctx) {
+  if (key.startsWith('fireball')) {
+    cinderTrail(ctx, 15, 16, 0xf501 + key.charCodeAt(key.length - 1), 8, [FIRE[1], FIRE[2], FIRE[3]]);
+  } else if (key.startsWith('cacoball')) {
+    shockRing(ctx, 17, 16, 9, VIOLET[3], VIOLET[1], 0xca55 + key.charCodeAt(key.length - 1));
+    arcs(ctx, 17, 16, 7, VIOLET[3], VIOLET[4], 0xca70 + key.charCodeAt(key.length - 1), 2);
+  } else if (key.startsWith('baronball')) {
+    shockRing(ctx, 16, 16, 8, GREEN[3], GREEN[1], 0xba77 + key.charCodeAt(key.length - 1));
+    cinderTrail(ctx, 15, 16, 0xba78 + key.charCodeAt(key.length - 1), 7, [GREEN[1], GREEN[3], GREEN[4]]);
+  } else if (key.startsWith('plasmaball')) {
+    shockRing(ctx, 16, 16, 8, PLASMA[3], PLASMA[1], 0x91f0 + key.charCodeAt(key.length - 1));
+  } else if (key.startsWith('bfgball')) {
+    shockRing(ctx, 32, 32, key.endsWith('0') ? 22 : 19, GREEN[4], GREEN[2], 0xbf90 + key.charCodeAt(key.length - 1));
+    sparks(ctx, 32, 32, 20, 30, [GREEN[3], GREEN[4]], 0xbf91 + key.charCodeAt(key.length - 1), 14, 0.58);
+  } else if (key === 'rocketproj0') {
+    cinderTrail(ctx, 12, 16, 0xa0c711, 12, [FIRE[0], FIRE[2], SMOKE[2]]);
+  } else if (key.startsWith('puff')) {
+    const f = key.charCodeAt(key.length - 1) - 48;
+    shockRing(ctx, 16, 16 - f, 6 + f * 2, SMOKE[2], SMOKE[0], 0x9f80 + f);
+  } else if (key.startsWith('blood')) {
+    const f = key.charCodeAt(key.length - 1) - 48;
+    for (let i = 0; i < 5 + f * 2; i++) {
+      const x = 9 + ((hash2(i, f, 1) * 15) | 0);
+      const y = 17 + f + ((hash2(i, f, 2) * 9) | 0);
+      px(ctx, x, y, BLOOD[1 + ((hash2(i, f, 3) * 3) | 0)]);
+    }
+  } else if (key.startsWith('explosion')) {
+    const f = key.charCodeAt(key.length - 1) - 48;
+    if (f <= 2) shockRing(ctx, 32, 32, 16 + f * 6, FIRE[3], FIRE[1], 0xe001 + f);
+    else shockRing(ctx, 32, 32, 20 + f * 2, SMOKE[2], SMOKE[0], 0xe101 + f);
+    sparks(ctx, 32, 32, 12, 31, f < 4 ? [FIRE[2], FIRE[3], FIRE[4]] : [FIRE[0], SMOKE[1]], 0xe201 + f, 10 - Math.min(f, 5), 0.58);
+  } else if (key.startsWith('fb_hit')) {
+    const f = key.charCodeAt(key.length - 1) - 48;
+    shockRing(ctx, 16, 16, 7 + f * 3, FIRE[3], FIRE[1], 0xfb90 + f);
+  } else if (key.startsWith('plasma_hit')) {
+    const f = key.charCodeAt(key.length - 1) - 48;
+    shockRing(ctx, 16, 16, 8 + f * 3, PLASMA[3], PLASMA[1], 0x91ff + f);
+  } else if (key.startsWith('bfg_hit')) {
+    const f = key.charCodeAt(key.length - 1) - 48;
+    shockRing(ctx, 32, 32, 18 + f * 8, GREEN_HOT[3], GREEN[1], 0xbfef + f);
+    arcs(ctx, 32, 32, 14 + f * 4, GREEN_HOT[3], GREEN_HOT[4], 0xbff0 + f, 4);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Экспорт (§4/§9)
 // ---------------------------------------------------------------------------
 
 export function generateSprites() {
   const sprites = new Map();
-  const put = (key, ctx) => sprites.set(key, ctx.canvas);
+  const put = (key, ctx) => {
+    polishFx(key, ctx);
+    sprites.set(key, ctx.canvas);
+  };
 
   for (let f = 0; f < 2; f++) {
     put('fireball' + f, buildFireball(f));

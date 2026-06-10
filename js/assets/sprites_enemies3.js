@@ -81,13 +81,83 @@ function splatter(ctx, rnd, cx, cy, n, pal) {
   }
 }
 
+function glintCross(ctx, x, y, hot, mid) {
+  px(ctx, x, y, hot);
+  px(ctx, x - 1, y, mid);
+  px(ctx, x + 1, y, mid);
+  px(ctx, x, y - 1, mid);
+  px(ctx, x, y + 1, mid);
+}
+
+function spray(ctx, rnd, cx, cy, n, sx, sy, pal) {
+  for (let i = 0; i < n; i++) {
+    const x = Math.round(cx + (rnd() - 0.5) * sx);
+    const y = Math.round(cy + (rnd() - 0.5) * sy);
+    px(ctx, x, y, pal[1 + ((rnd() * (pal.length - 1)) | 0)]);
+    if (rnd() < 0.35) px(ctx, x, y + 1, pal[0]);
+  }
+}
+
+function polishCaco(ctx, rnd, key) {
+  if (!key.includes('_die4')) {
+    glintCross(ctx, 32, key.includes('_attack') ? 21 : 22, CACO_PAL.glint, CACO_PAL.iris[3]);
+    px(ctx, 22, 13, CACO_PAL.body[5]);
+    px(ctx, 42, 13, CACO_PAL.body[2]);
+  }
+  if (key.includes('_attack1')) {
+    for (let i = 0; i < 9; i++) {
+      const x = 22 + i * 3;
+      const y = 41 + Math.round(Math.sin(i * 1.7) * 3);
+      px(ctx, x, y, i & 1 ? CACO_PAL.bolt[3] : CACO_PAL.bolt[2]);
+      px(ctx, x, y + 1, CACO_PAL.bolt[1]);
+    }
+    spray(ctx, rnd, 32, 42, 16, 35, 15, CACO_PAL.bolt);
+  }
+  if (key.includes('_pain') || key.includes('_die0') || key.includes('_die1')) spray(ctx, rnd, 34, 34, 18, 30, 28, CACO_PAL.blood);
+  if (key.includes('_die2') || key.includes('_die3') || key.includes('_die4')) {
+    spray(ctx, rnd, 32, 58, 18, 38, 10, CACO_PAL.blood);
+    for (let i = 0; i < 5; i++) hline(ctx, 18 + ((rnd() * 14) | 0), 43 + ((rnd() * 14) | 0), 60 + i, CACO_PAL.blood[i & 1 ? 1 : 2]);
+  }
+}
+
+function polishBaron(ctx, rnd, key) {
+  if (!key.includes('_die4')) {
+    glintCross(ctx, 44, 31, BARON_PAL.eye[3], BARON_PAL.eye[2]);
+    glintCross(ctx, 52, 31, BARON_PAL.eye[3], BARON_PAL.eye[2]);
+  }
+  if (key.includes('_walk') || key.includes('_attack') || key.includes('_pain')) {
+    hline(ctx, 36, 45, 39, BARON_PAL.skin[4]);
+    hline(ctx, 50, 60, 40, BARON_PAL.skin[1]);
+    vline(ctx, 35, 42, 54, BARON_PAL.skin[3]);
+    vline(ctx, 60, 43, 55, BARON_PAL.skin[1]);
+    for (let y = 50; y <= 66; y += 4) hline(ctx, 41, 55, y, BARON_PAL.skin[1]);
+    for (const [x, y] of [[39, 24], [42, 19], [54, 19], [57, 24]]) px(ctx, x, y, BARON_PAL.horn[3]);
+  }
+  if (key.includes('_attack0') || key.includes('_attack1')) {
+    spray(ctx, rnd, 64, key.includes('_attack1') ? 18 : 24, 18, 24, 22, BARON_PAL.orb);
+    hline(ctx, 49, 63, 42, BARON_PAL.orb[2]);
+  }
+  if (key.includes('_pain') || key.includes('_die0') || key.includes('_die1')) spray(ctx, rnd, 48, 44, 24, 35, 24, BARON_PAL.blood);
+  if (key.includes('_die2') || key.includes('_die3') || key.includes('_die4')) {
+    spray(ctx, rnd, 46, 88, 24, 48, 14, BARON_PAL.blood);
+    for (let i = 0; i < 6; i++) hline(ctx, 27 + ((rnd() * 20) | 0), 60 + ((rnd() * 20) | 0), 90 + i, BARON_PAL.blood[i & 1 ? 1 : 2]);
+  }
+}
+
+function polishFrame(ctx, rnd, key) {
+  if (key.startsWith('cacodemon_')) polishCaco(ctx, rnd, key);
+  else polishBaron(ctx, rnd, key);
+}
+
 function addFrame(m, key, size, painter) {
   const c = document.createElement('canvas');
   c.width = size;
   c.height = size;
   const ctx = c.getContext('2d');
   ctx.imageSmoothingEnabled = false;
-  painter(ctx, mulberry32(SEED ^ strSeed(key)));
+  const rnd = mulberry32(SEED ^ strSeed(key));
+  painter(ctx, rnd);
+  polishFrame(ctx, rnd, key);
   m.set(key, c);
 }
 
@@ -355,6 +425,10 @@ const BARON_HORN_LIMB = [BARON_PAL.horn[0], BARON_PAL.horn[1], BARON_PAL.horn[2]
 
 function hline(ctx, x0, x1, y, color) {
   for (let x = x0; x <= x1; x++) px(ctx, x, y, color);
+}
+
+function vline(ctx, x, y0, y1, color) {
+  for (let y = y0; y <= y1; y++) px(ctx, x, y, color);
 }
 
 // Конечность с объёмом: тёмный контур + средний тон + блик сверху-слева.

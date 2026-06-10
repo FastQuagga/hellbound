@@ -101,6 +101,87 @@ function splat(ctx, rng, x, y, n) {
     px(ctx, Math.round(x + (rng() - 0.5) * 11), Math.round(y + (rng() - 0.5) * 9), BLOOD[(rng() * 3) | 0]);
 }
 
+function brightEye(ctx, x, y, hot, mid) {
+  px(ctx, x - 1, y, mid);
+  px(ctx, x, y, hot);
+  px(ctx, x + 1, y, mid);
+  px(ctx, x, y - 1, hot);
+}
+
+function hotSparks(ctx, rng, x, y, n, pal) {
+  for (let i = 0; i < n; i++) {
+    const a = rng() * Math.PI * 2;
+    const d = 2 + rng() * 7;
+    px(ctx, Math.round(x + Math.cos(a) * d), Math.round(y + Math.sin(a) * d), pal[(rng() * pal.length) | 0]);
+  }
+}
+
+function muscleCuts(ctx, cx, y, pal) {
+  hline(ctx, cx - 6, cx - 2, y, pal[0]);
+  hline(ctx, cx + 2, cx + 6, y, pal[0]);
+  px(ctx, cx - 4, y - 1, pal[2]);
+  px(ctx, cx + 4, y - 1, pal[2]);
+  px(ctx, cx, y + 3, pal[0]);
+  px(ctx, cx, y + 6, pal[0]);
+}
+
+function polishImp(ctx, rng, key) {
+  if (!key.includes('_die4')) {
+    brightEye(ctx, 28, 17, '#ffd24a', '#f08a1d');
+    brightEye(ctx, 36, 17, '#ffd24a', '#f08a1d');
+  }
+  if (key.includes('_walk') || key.includes('_attack') || key.includes('_pain')) {
+    muscleCuts(ctx, 32, 34, IMP_BODY);
+    // Дополнительные рваные шипы на силуэте плеч и спины.
+    slantSpike(ctx, 20, 31, 3, -0.9, BONE_L, BONE_D);
+    slantSpike(ctx, 44, 31, 3, 0.9, BONE_L, BONE_D);
+    hline(ctx, 24, 29, 45, IMP_BODY[3]);
+    hline(ctx, 35, 40, 45, IMP_BODY[1]);
+  }
+  if (key.includes('_attack0')) hotSparks(ctx, rng, 46, 17, 7, ['#c44d12', '#f08a1d']);
+  if (key.includes('_attack1')) {
+    hotSparks(ctx, rng, 44, 12, 14, ['#f08a1d', '#ffd24a', '#fff6c9']);
+    hline(ctx, 25, 39, 29, '#f08a1d');
+  }
+  if (key.includes('_pain') || key.includes('_die0') || key.includes('_die1')) splat(ctx, rng, 31, 35, 3);
+  if (key.includes('_die2') || key.includes('_die3') || key.includes('_die4')) {
+    splat(ctx, rng, 29, 58, 3);
+    hline(ctx, 20, 44, 63, BLOOD[0]);
+  }
+}
+
+function polishDemon(ctx, rng, key) {
+  if (!key.includes('_die4')) {
+    brightEye(ctx, 27, 12, '#fff6c9', '#c8a06e');
+    brightEye(ctx, 37, 12, '#fff6c9', '#c8a06e');
+  }
+  if (key.includes('_walk') || key.includes('_attack') || key.includes('_pain')) {
+    muscleCuts(ctx, 32, 29, DEM_HAUNCH);
+    // Контрастный рим-лайт по левому плечу и спине.
+    hline(ctx, 20, 27, 23, DEM_BODY[3]);
+    hline(ctx, 16, 22, 40, DEM_BODY[2]);
+    px(ctx, 21, 62, HOOF_PAL[2]);
+    px(ctx, 43, 62, HOOF_PAL[2]);
+  }
+  if (key.includes('_attack1')) {
+    for (let i = 0; i < 7; i++) px(ctx, 26 + i * 2, 17, TEETH_L);
+    hotSparks(ctx, rng, 32, 21, 6, ['#e8cfa0', '#fff6c9']);
+    px(ctx, 24, 24, TEETH_L);
+    px(ctx, 40, 24, TEETH_L);
+  }
+  if (key.includes('_attack2')) splat(ctx, rng, 32, 22, 2);
+  if (key.includes('_pain') || key.includes('_die0') || key.includes('_die1')) splat(ctx, rng, 32, 33, 4);
+  if (key.includes('_die2') || key.includes('_die3') || key.includes('_die4')) {
+    splat(ctx, rng, 32, 58, 4);
+    hline(ctx, 15, 49, 63, BLOOD[0]);
+  }
+}
+
+function polishMonster(ctx, rng, key) {
+  if (key.startsWith('imp_')) polishImp(ctx, rng, key);
+  else polishDemon(ctx, rng, key);
+}
+
 // Лужа крови с рваным краем (под трупами; рисовать ДО тела).
 function bloodPool(ctx, rng, cx, cy, rx, ry) {
   const y0 = Math.max(0, Math.floor(cy - ry)), y1 = Math.min(63, Math.ceil(cy + ry));
@@ -531,7 +612,9 @@ export function generateSprites() {
     cv.width = 64; cv.height = 64;
     const ctx = cv.getContext('2d');
     ctx.imageSmoothingEnabled = false;
-    draw(ctx, mulberry32(hashStr(key))); // сид из имени кадра — стабильно между запусками
+    const rng = mulberry32(hashStr(key)); // сид из имени кадра — стабильно между запусками
+    draw(ctx, rng);
+    polishMonster(ctx, rng, key);
     sprites.set(key, cv);
   };
   for (const [name, pose] of Object.entries(IMP_POSES))

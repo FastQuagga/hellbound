@@ -220,6 +220,66 @@ function SMOKE(ctx, rng, cx, cy, n, spread, rise) {
   ctx.globalAlpha = 1;
 }
 
+// Дизеренный отсвет от вспышки/плазмы: только пиксельная сетка, alpha >= 0.52.
+function DITHER_GLOW(ctx, cx, cy, rx, ry, color, phase = 0, alpha = 0.56) {
+  ctx.globalAlpha = alpha;
+  const x0 = Math.max(0, Math.floor(cx - rx));
+  const x1 = Math.min(W - 1, Math.ceil(cx + rx));
+  const y0 = Math.max(0, Math.floor(cy - ry));
+  const y1 = Math.min(H - 1, Math.ceil(cy + ry));
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const dx = (x - cx) / rx;
+      const dy = (y - cy) / ry;
+      if (dx * dx + dy * dy <= 1 && ((x + y + phase) & 1) === 0) P(ctx, x, y, color);
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+function SCRATCHES(ctx, rng, x, y, w, h, n, light = MTL[5], dark = MTL[1]) {
+  for (let i = 0; i < n; i++) {
+    const sx = x + ((rng() * w) | 0);
+    const sy = y + ((rng() * h) | 0);
+    const len = 2 + ((rng() * 6) | 0);
+    const c = rng() < 0.55 ? light : dark;
+    HL(ctx, sx, sy, len, c);
+    if (rng() < 0.35) P(ctx, sx + len, sy + 1, dark);
+  }
+}
+
+function SOOT(ctx, rng, cx, cy, rx, ry, n) {
+  for (let i = 0; i < n; i++) {
+    const a = rng() * Math.PI * 2;
+    const d = Math.sqrt(rng());
+    const x = Math.round(cx + Math.cos(a) * rx * d);
+    const y = Math.round(cy + Math.sin(a) * ry * d);
+    P(ctx, x, y, rng() < 0.65 ? DARK2 : DARK);
+  }
+}
+
+function SERIAL(ctx, x, y, w, color) {
+  for (let i = 0; i < w; i += 3) {
+    P(ctx, x + i, y, color);
+    if ((i & 1) === 0) P(ctx, x + i, y + 1, color);
+  }
+}
+
+function FIRE_REFLECT(ctx, cx, cy, phase) {
+  DITHER_GLOW(ctx, cx, cy, 44, 38, FIRE[2], phase, 0.56);
+  DITHER_GLOW(ctx, cx, cy + 16, 58, 30, FIRE[1], phase + 1, 0.54);
+}
+
+function PLASMA_REFLECT(ctx, cx, cy, phase) {
+  DITHER_GLOW(ctx, cx, cy, 52, 40, PLAS[2], phase, 0.57);
+  DITHER_GLOW(ctx, cx, cy + 20, 66, 34, PLAS[1], phase + 1, 0.54);
+}
+
+function GREEN_REFLECT(ctx, cx, cy, phase) {
+  DITHER_GLOW(ctx, cx, cy, 62, 44, GRN[3], phase, 0.57);
+  DITHER_GLOW(ctx, cx, cy + 22, 76, 36, GRN[2], phase + 1, 0.54);
+}
+
 // рукав брони: вертикальная зелёная трапеция до нижней кромки, со складками
 function ARM_DOWN(ctx, cx, y0, w0, w1) {
   const span = Math.max(1, H - y0 + 8);
@@ -364,6 +424,12 @@ function genFist(map) {
   for (const [key, bx, by, ax, ay, tilt] of poses) {
     const [c, ctx] = mk();
     drawFist(ctx, bx, by, ax, ay);
+    if (key === 'wpn_fist_fire1') {
+      for (let i = 0; i < 9; i++) {
+        LINE(ctx, bx - 54 - i * 2, by - 24 + i * 5, bx - 35 - i, by - 18 + i * 5, i & 1 ? GLV[4] : MTL[4]);
+      }
+      DITHER_GLOW(ctx, bx - 8, by - 8, 38, 26, GLV[5], 1, 0.54);
+    }
     map.set(key, tilt ? TILT(c, tilt) : c);
   }
 }
@@ -426,6 +492,8 @@ function drawPistol(ctx, fi, o) {
 
   // потёртости корпуса (стабильны между кадрами)
   WEAR(ctx, rb, CX - 14, st + 2, 28, 26, 10);
+  SCRATCHES(ctx, rb, CX - 13, st + 4, 26, 20, 7);
+  SERIAL(ctx, CX - 9, st + 12, 18, MTL[1]);
 
   // ---- кисть на рукояти (не двигается вместе с затвором)
   const hy = ys + 42;
@@ -446,6 +514,14 @@ function drawPistol(ctx, fi, o) {
   // манжета и рукав до нижней кромки
   CUFF(ctx, CX - 24, hy + 32, 52, 10);
   ARM_DOWN(ctx, CX + 1, hy + 41, 50, 62);
+
+  if (o.flash) {
+    FIRE_REFLECT(ctx, CX, ys + 36, fi);
+    HL(ctx, CX - 11, st + 5, 22, FIRE[3]);
+    P(ctx, CX - 8, hy + 5, FIRE[2]);
+    P(ctx, CX + 16, hy + 6, FIRE[1]);
+  }
+  if (o.smoke) SOOT(ctx, rf, CX, ys - 5, 10, 5, 12);
 }
 
 function genPistol(map) {
@@ -503,6 +579,8 @@ function drawShotgun(ctx, fi, o) {
   SCREW(ctx, CX - 13, rt + 4);
   SCREW(ctx, CX - 13, rt + 14);
   WEAR(ctx, rb, CX - 14, rt + 2, 28, 18, 8);
+  SCRATCHES(ctx, rb, CX - 12, rt + 3, 28, 18, 7);
+  SERIAL(ctx, CX + 2, rt + 16, 14, MTL[1]);
 
   // рукав правой руки — под прикладом, к нижнему правому углу
   LIMB(ctx, CX + 28, rt + 30, CX + 60, rt + 74, 11, 17, SLV);
@@ -556,6 +634,14 @@ function drawShotgun(ctx, fi, o) {
     P(ctx, sx - 3, sy - 3, MTL[4]);
     P(ctx, sx - 6, sy - 5, MTL[3]);
   }
+
+  if (o.flash) {
+    FIRE_REFLECT(ctx, CX, ym + 52, fi + 2);
+    HL(ctx, CX - 7, ym + 8, 14, FIRE[3]);
+    P(ctx, CX - 23, pt + 5, FIRE[2]);
+    P(ctx, CX + 23, rt + 22, FIRE[1]);
+  }
+  if (o.smoke) SOOT(ctx, rf, CX, ym - 5, 12, 6, 14);
 }
 
 function genShotgun(map) {
@@ -630,6 +716,8 @@ function drawChaingun(ctx, fi, o) {
   SCREW(ctx, CX + 7, by0 + 23);
   HAZARD(ctx, CX - 15, by0 + 31, 30, 4);
   WEAR(ctx, rb, CX - 46, by0 + 4, 92, 32, 16);
+  SCRATCHES(ctx, rb, CX - 44, by0 + 6, 88, 28, 13);
+  SERIAL(ctx, CX - 8, by0 + 15, 17, MTL[1]);
 
   // коробка боепитания слева с латунными патронами
   BLOB(ctx, CX - 60, by0 + 8, 18, 24, [MTL[0], MTL[1], MTL[2], MTL[3], MTL[4]]);
@@ -656,6 +744,9 @@ function drawChaingun(ctx, fi, o) {
     // раскалённые жерла
     P(ctx, CX - 26, my, FIRE[3]);
     P(ctx, CX + 26, my, FIRE[3]);
+    FIRE_REFLECT(ctx, CX, my + 24, fi + 4);
+    SOOT(ctx, rf, CX - 26, my, 9, 7, 10);
+    SOOT(ctx, rf, CX + 26, my, 9, 7, 10);
   }
 }
 
@@ -713,6 +804,8 @@ function drawRocketLauncher(ctx, fi, o) {
     VL(ctx, x, py + 12 + ((rb() * 6) | 0), 3 + ((rb() * 5) | 0), RUST[1]);
   }
   WEAR(ctx, rb, CX - 32, py + 8, 64, 40, 14);
+  SCRATCHES(ctx, rb, CX - 30, py + 9, 60, 36, 12);
+  SERIAL(ctx, CX - 9, py + 35, 19, MTL[1]);
 
   // жерло: стальной обод и тёмная глотка
   ORB(ctx, CX, hcy, 18, MS);
@@ -751,9 +844,11 @@ function drawRocketLauncher(ctx, fi, o) {
       const a = rf() * Math.PI * 2;
       P(ctx, Math.round(CX + Math.cos(a) * 4), Math.round(hcy + Math.sin(a) * 4), FIRE[2]);
     }
+    SOOT(ctx, rf, CX, hcy, 16, 12, 18);
   }
   if (o.flash) {
     BURST(ctx, rf, CX, hcy, o.flash, FIRE, 12);
+    FIRE_REFLECT(ctx, CX, hcy + 26, fi + 6);
   }
   if (o.smoke) SMOKE(ctx, rf, CX, py - 2, o.smoke, 52, 30);
 }
@@ -818,6 +913,7 @@ function drawPlasmaRifle(ctx, fi, o) {
     P(ctx, CX, my + 12, PLAS[2]);
   }
   WEAR(ctx, rb, CX - 34, my + 2, 68, 22, 10);
+  SCRATCHES(ctx, rb, CX - 32, my + 3, 64, 20, 9, PLAS[3], MTL[1]);
 
   // корпус
   const by0 = my + 26;
@@ -848,6 +944,7 @@ function drawPlasmaRifle(ctx, fi, o) {
   for (let i = 0; i < 3; i++) P(ctx, CX - 3 + i * 4, by0 + 21, glow ? PLAS[3] : (i === 0 ? PLAS[2] : MTL[1]));
   HAZARD(ctx, CX - 14, by0 + 31, 28, 3);
   WEAR(ctx, rb, CX - 28, by0 + 2, 56, 30, 10);
+  SERIAL(ctx, CX - 5, by0 + 14, 17, MTL[1]);
 
   // кисти по бокам снизу
   for (const sgn of [-1, 1]) {
@@ -856,6 +953,10 @@ function drawPlasmaRifle(ctx, fi, o) {
     FING_H(ctx, hx - 11, by0 + 45, 22, 7);
     BLOB(ctx, hx + (sgn < 0 ? -19 : 9), by0 + 37, 13, 17, GLV);
     ARM_DOWN(ctx, hx + sgn * 6, by0 + 52, 30, 42);
+  }
+  if (glow) {
+    PLASMA_REFLECT(ctx, CX, my + 24, fi);
+    HL(ctx, CX - 30, my + 2, 60, PLAS[3]);
   }
 }
 
@@ -919,6 +1020,7 @@ function drawBFG(ctx, fi, o) {
   SCREW(ctx, CX + 22, acy - 12);
   SCREW(ctx, CX + 22, acy + 20);
   WEAR(ctx, rb, CX - 28, acy - 16, 56, 44, 12);
+  SCRATCHES(ctx, rb, CX - 26, acy - 14, 52, 40, 12, GRN[3], MTL[1]);
 
   // ---- апертура
   ORB(ctx, CX, acy, 18, MS);
@@ -955,6 +1057,7 @@ function drawBFG(ctx, fi, o) {
   SCREW(ctx, CX - 50, by0 + 6);
   SCREW(ctx, CX + 48, by0 + 6);
   WEAR(ctx, rb, CX - 52, by0 + 2, 104, 26, 16);
+  SERIAL(ctx, CX - 24, by0 + 17, 22, MTL[1]);
 
   // кисти по нижним углам
   for (const sgn of [-1, 1]) {
@@ -970,16 +1073,18 @@ function drawBFG(ctx, fi, o) {
     DISC(ctx, CX, acy, 5, GRN[2]);
     DISC(ctx, CX, acy, 3, GRN[3]);
     P(ctx, CX, acy, GRN[4]);
-    ctx.globalAlpha = 0.4;
+    ctx.globalAlpha = 0.55;
     RING(ctx, CX, acy, 6, 8, GRN[1]);
     ctx.globalAlpha = 1;
+    GREEN_REFLECT(ctx, CX, acy + 30, fi);
   } else if (chg === 2) {
     BURST(ctx, rf, CX, acy, 14, GRN, 8);
     DISC(ctx, CX, acy, 8, GRN[3]);
     DISC(ctx, CX, acy, 4, GRN[4]);
-    ctx.globalAlpha = 0.4;
+    ctx.globalAlpha = 0.55;
     RING(ctx, CX, acy, 12, 16, GRN[2]);
     ctx.globalAlpha = 1;
+    GREEN_REFLECT(ctx, CX, acy + 28, fi + 2);
   } else if (chg === 3) {
     BURST(ctx, rf, CX, acy, 27, GRN, 13);
     DISC(ctx, CX, acy, 12, GRN[4]);
@@ -988,6 +1093,7 @@ function drawBFG(ctx, fi, o) {
     HL(ctx, CX - 29, acy - 18, 58, GRN[3]);
     P(ctx, CX - 30, acy - 17, GRN[2]);
     P(ctx, CX + 29, acy - 17, GRN[2]);
+    GREEN_REFLECT(ctx, CX, acy + 26, fi + 4);
   } else if (chg === 4) {
     RING(ctx, CX, acy, 7, 9, GRN[1]);
     ctx.globalAlpha = 0.6;

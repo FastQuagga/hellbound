@@ -1241,6 +1241,180 @@ function texCEIL_HELL() {
   return ctx.canvas;
 }
 
+// ---------------------------------------------------------------- финальная детализация
+
+function seamScratch(ctx, rng, count, light, dark) {
+  for (let i = 0; i < count; i++) {
+    const x = (rng() * 64) | 0;
+    const y = (rng() * 64) | 0;
+    const len = 2 + ((rng() * 7) | 0);
+    hline(ctx, x, x + len, y, rng() < 0.55 ? light : dark);
+    if (rng() < 0.35) px(ctx, x + len + 1, y + 1, dark);
+  }
+}
+
+function cableArc(ctx, y0, colorA, colorB, seed) {
+  const rng = mulberry32(seed);
+  for (let x = 0; x < 64; x++) {
+    const y = y0 + Math.round(Math.sin((x / 64) * Math.PI * 4 + seed) * 2);
+    px(ctx, x, y, colorA);
+    px(ctx, x, y + 1, colorB);
+    if ((x % 16) === 0) {
+      hline(ctx, x - 2, x + 3, y - 1, MET[3]);
+      hline(ctx, x - 2, x + 3, y + 2, MET[0]);
+      if (rng() < 0.7) rivet(ctx, x, y);
+    }
+  }
+}
+
+function crackNet(ctx, rng, count, color, hot) {
+  for (let i = 0; i < count; i++) {
+    const pts = walkPath(rng, rng() * 64, rng() * 64, 12 + ((rng() * 18) | 0), 1.0);
+    drawPath(ctx, pts, color);
+    for (const [x, y] of pts) {
+      if (hot && rng() < 0.22) px(ctx, x, y - 1, hot);
+      else if (rng() < 0.2) px(ctx, x + 1, y, color);
+    }
+  }
+}
+
+function lowerGrime(ctx, rng, colorA, colorB) {
+  for (let x = 0; x < 64; x++) {
+    const h = 2 + ((rng() * 6) | 0);
+    for (let y = 64 - h; y < 64; y++) {
+      if (((x + y) & 1) === 0 || rng() < 0.35) px(ctx, x, y, rng() < 0.65 ? colorA : colorB);
+    }
+    if (rng() < 0.12) px(ctx, x, 0, colorB); // мягкий wrap-шум на верхней кромке
+  }
+}
+
+function polishTechWall(ctx, seed) {
+  const rng = mulberry32(seed);
+  cableArc(ctx, 18, '#101216', MET[3], seed + 11);
+  cableArc(ctx, 46, '#15171b', MET[2], seed + 17);
+  for (let x = 6; x < 64; x += 13) {
+    rivet(ctx, x, 6);
+    rivet(ctx, x + 3, 57);
+  }
+  seamScratch(ctx, rng, 12, MET[4], MET[0]);
+  lowerGrime(ctx, rng, '#101216', RUST[0]);
+}
+
+function polishStoneWall(ctx, seed, hell) {
+  const rng = mulberry32(seed);
+  crackNet(ctx, rng, hell ? 5 : 4, hell ? '#1a0404' : '#23262c', hell ? FIRE[0] : null);
+  for (let i = 0; i < 10; i++) {
+    const x = (rng() * 64) | 0;
+    const y = (rng() * 64) | 0;
+    px(ctx, x, y, hell ? BLOOD[2] : MET[4]);
+    px(ctx, x + 1, y + 1, hell ? '#1a0404' : MET[0]);
+  }
+}
+
+function polishOrganic(ctx, seed) {
+  const rng = mulberry32(seed);
+  for (let i = 0; i < 7; i++) {
+    const p = walkPath(rng, rng() * 64, rng() * 64, 22, 0.75);
+    drawPath(ctx, p, rng() < 0.5 ? BLOOD[0] : '#240505');
+    for (const [x, y] of p) if (rng() < 0.25) px(ctx, x + 1, y, BLOOD[2]);
+  }
+  for (let i = 0; i < 5; i++) {
+    const x = (rng() * 64) | 0, y = (rng() * 64) | 0;
+    splat(ctx, rng, x, y, 12, 3, rng() < 0.5 ? SKIN[1] : BLOOD[3]);
+    px(ctx, x - 1, y - 1, SKIN[3]);
+  }
+}
+
+function polishLiquid(ctx, seed, pal, lava) {
+  const rng = mulberry32(seed);
+  for (let i = 0; i < 18; i++) {
+    const x = (rng() * 64) | 0, y = (rng() * 64) | 0;
+    if (lava) {
+      px(ctx, x, y, FIRE[3]);
+      if (rng() < 0.5) px(ctx, x + 1, y, FIRE[1]);
+    } else {
+      px(ctx, x, y, pal[3]);
+      if (rng() < 0.45) px(ctx, x + 1, y, pal[2]);
+    }
+  }
+}
+
+function skylineBlock(ctx, x0, baseY, w, h, col, lit) {
+  for (let x = x0; x < x0 + w; x++) {
+    for (let y = baseY - h; y < 256; y++) px(ctx, x, y, col);
+    px(ctx, x, baseY - h - 1, '#2a0d12');
+  }
+  for (let y = baseY - h + 5; y < baseY - 4; y += 7) {
+    for (let x = x0 + 3; x < x0 + w - 3; x += 6) {
+      if (((x + y) & 3) === 0) {
+        px(ctx, x, y, lit);
+        px(ctx, x + 1, y, FIRE[0]);
+      }
+    }
+  }
+}
+
+function polishSky(ctx) {
+  const W = 1024;
+  const rng = mulberry32(901);
+  // Более плотные слои облаков с wrap по X.
+  for (let band = 0; band < 5; band++) {
+    const y0 = 38 + band * 18;
+    for (let i = 0; i < 26; i++) {
+      const cx = (band * 89 + i * 157 + ((rng() * 41) | 0)) % W;
+      const len = 34 + ((rng() * 70) | 0);
+      for (let d = -len; d <= len; d++) {
+        const x = (cx + d + W) % W;
+        const y = y0 + Math.round(Math.sin(d * 0.09 + band) * (2 + band * 0.4));
+        if (((d + y) & 1) === 0) px(ctx, x, y, band < 2 ? '#10080d' : '#241016');
+        if ((d & 3) === 0) px(ctx, x, y + 1, '#1a0b10');
+      }
+    }
+  }
+  // Дальний разрушенный город/база на горизонте.
+  for (let i = 0; i < 18; i++) {
+    const x = (i * 57 + 11) % W;
+    const w = 12 + ((i * 7) % 18);
+    const h = 18 + ((i * 13) % 34);
+    skylineBlock(ctx, x, 218 + ((i * 5) % 12), w, h, i & 1 ? '#0b0508' : '#120609', FIRE[1]);
+    if ((i % 4) === 0) vline(ctx, x + (w >> 1), 150 + ((i * 9) % 24), 218, '#0b0508');
+  }
+  for (let i = 0; i < 70; i++) {
+    const x = (rng() * W) | 0;
+    const y = 145 + ((rng() * 88) | 0);
+    px(ctx, x, y, rng() < 0.5 ? FIRE[2] : FIRE[1]);
+    if (rng() < 0.25) px(ctx, x + 1, y, FIRE[0]);
+  }
+}
+
+function polishTexture(key, canvas) {
+  const ctx = canvas.getContext('2d');
+  if (key === 'SKY1') {
+    polishSky(ctx);
+    return;
+  }
+  const seed = 700 + key.length * 17 + key.charCodeAt(0);
+  if (key.startsWith('TECH') || key.startsWith('COMP') || key === 'METAL' || key === 'SUPPORT' || key.startsWith('DOOR') || key.startsWith('SWEXIT')) {
+    polishTechWall(ctx, seed);
+  } else if (key === 'STONE' || key === 'BRICKRED' || key === 'MARBLE' || key === 'CRATE') {
+    polishStoneWall(ctx, seed, key === 'BRICKRED');
+  } else if (key === 'FLESH') {
+    polishOrganic(ctx, seed);
+  } else if (key.startsWith('FLOOR') || key.startsWith('CEIL')) {
+    const rng = mulberry32(seed);
+    crackNet(ctx, rng, key.includes('HELL') || key.includes('REDROCK') ? 5 : 3, key.includes('HELL') ? '#2c0a06' : MET[0], key.includes('HELL') ? FIRE[1] : null);
+    seamScratch(ctx, rng, 10, key.includes('LIGHT') ? '#ffffff' : MET[3], MET[0]);
+  } else if (key.startsWith('NUKAGE')) {
+    polishLiquid(ctx, seed, ACID, false);
+  } else if (key.startsWith('LAVA')) {
+    polishLiquid(ctx, seed, FIRE, true);
+  }
+}
+
+function polishTextures(map) {
+  for (const [key, canvas] of map) polishTexture(key, canvas);
+}
+
 // ---------------------------------------------------------------- экспорт
 
 export function generateTextures() {
@@ -1279,5 +1453,6 @@ export function generateTextures() {
   map.set('CEIL_TECH', texCEIL_TECH());
   map.set('CEIL_LIGHT', texCEIL_LIGHT());
   map.set('CEIL_HELL', texCEIL_HELL());
+  polishTextures(map);
   return map;
 }

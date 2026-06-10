@@ -1323,6 +1323,89 @@ function drawCorpse1(ctx) {
 }
 
 // ---------------------------------------------------------------------------
+// Финальный polish-pass: яркость подбираемых предметов и дополнительные детали
+// ---------------------------------------------------------------------------
+
+function ditherAura(ctx, cx, cy, r, color, seed, alpha = 0.56) {
+  for (let y = cy - r; y <= cy + r; y++) {
+    for (let x = cx - r; x <= cx + r; x++) {
+      const d = Math.hypot(x - cx, y - cy);
+      if (d > r || d < r * 0.55) continue;
+      if (hash2(x, y, seed) < 0.45) px(ctx, x, y, color, alpha);
+    }
+  }
+}
+
+function extraMetalBites(ctx, seed, x0, y0, w, h) {
+  for (let i = 0; i < 12; i++) {
+    const x = x0 + ((hash2(i, seed, 1) * w) | 0);
+    const y = y0 + ((hash2(i, seed, 2) * h) | 0);
+    hline(ctx, x, x + 1 + ((hash2(i, seed, 3) * 4) | 0), y, hash2(i, seed, 4) < 0.55 ? METAL[4] : METAL[0]);
+  }
+}
+
+function polishMed(ctx, big) {
+  const y = big ? 43 : 49;
+  sparkle(ctx, 23, y, '#ffffff', '#eef0f6');
+  sparkle(ctx, 41, y + (big ? 3 : 1), '#ffffff', '#eef0f6');
+  hline(ctx, big ? 18 : 24, big ? 45 : 51, y + 2, '#ffffff');
+  hline(ctx, big ? 19 : 25, big ? 44 : 50, y + 3, '#a8acba');
+}
+
+function polishWeaponPickup(ctx, key) {
+  extraMetalBites(ctx, key.length * 31, 12, 42, 45, 18);
+  for (const [x, y] of [[18, 45], [31, 47], [44, 48]]) sparkle(ctx, x, y, '#c8ccd6', '#99a0ad');
+  if (key.includes('plasma')) ditherAura(ctx, 46, 48, 12, '#46c8ff', 902, 0.56);
+  if (key.includes('bfg')) ditherAura(ctx, 50, 48, 15, '#7ade3f', 903, 0.58);
+}
+
+function polishCorpse(ctx, key) {
+  const rng = mulberry32(key === 'corpse0' ? 9101 : 9102);
+  for (let i = 0; i < 38; i++) {
+    const x = key === 'corpse0' ? 14 + ((rng() * 30) | 0) : 22 + ((rng() * 21) | 0);
+    const y = key === 'corpse0' ? 54 + ((rng() * 10) | 0) : 24 + ((rng() * 39) | 0);
+    px(ctx, x, y, rng() < 0.55 ? BLOOD[1] : BLOOD[2]);
+  }
+}
+
+function polishItem(key, ctx) {
+  if (key === 'stimpack') polishMed(ctx, false);
+  else if (key === 'medikit') polishMed(ctx, true);
+  else if (key === 'healthbonus') {
+    ditherAura(ctx, 32, 57, 16, '#46c8ff', 801, 0.56);
+    sparkle(ctx, 28, 52, '#ffffff', '#e8fbff');
+  } else if (key === 'armorbonus' || key === 'armorgreen' || key === 'armorblue') {
+    ditherAura(ctx, 32, key === 'armorbonus' ? 56 : 36, key === 'armorbonus' ? 13 : 19, key === 'armorblue' ? '#46c8ff' : '#7ade3f', 802, 0.54);
+  } else if (key === 'soulsphere') {
+    ditherAura(ctx, 32, 32, 24, '#46c8ff', 803, 0.58);
+    sparkle(ctx, 24, 22, '#ffffff', '#e8fbff');
+    sparkle(ctx, 42, 38, '#9ce6ff', '#46c8ff');
+  } else if (key.startsWith('key_')) {
+    const col = key.includes('blue') ? '#9cc8ff' : key.includes('yellow') ? '#fff6c9' : '#ffb0a0';
+    ditherAura(ctx, 32, 51, 15, col, 804, 0.54);
+    sparkle(ctx, 29, 43, '#ffffff', col);
+  } else if (key.startsWith('pickup_')) {
+    polishWeaponPickup(ctx, key);
+  } else if (key.startsWith('ammo_')) {
+    extraMetalBites(ctx, key.length * 47, 16, 42, 34, 18);
+    if (key.includes('cell')) ditherAura(ctx, 32, 52, 15, '#7ade3f', 805, 0.56);
+    if (key.includes('rocket')) sparkle(ctx, 35, 39, '#fff6c9', '#ffd24a');
+  } else if (key === 'barrel') {
+    ditherAura(ctx, 32, 31, 18, '#7ade3f', 806, 0.54);
+    extraMetalBites(ctx, 807, 21, 31, 23, 29);
+  } else if (key.startsWith('lamp')) {
+    ditherAura(ctx, 32, 32, key === 'lamp0' ? 17 : 13, '#ffd24a', 808, key === 'lamp0' ? 0.58 : 0.54);
+  } else if (key.startsWith('torch')) {
+    ditherAura(ctx, 32, 25, 18, '#f08a1d', 809 + key.charCodeAt(5), 0.56);
+  } else if (key === 'pillar') {
+    extraMetalBites(ctx, 810, 21, 29, 22, 32);
+    sparkle(ctx, 32, 33, '#d6ff9e', '#7ade3f');
+  } else if (key.startsWith('corpse')) {
+    polishCorpse(ctx, key);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Экспорт (§4/§8): все ключи предметов и декора
 // ---------------------------------------------------------------------------
 
@@ -1331,6 +1414,7 @@ export function generateSprites() {
   const add = (key, draw, ...args) => {
     const ctx = makeCanvas();
     draw(ctx, ...args);
+    polishItem(key, ctx);
     sprites.set(key, ctx.canvas);
   };
 

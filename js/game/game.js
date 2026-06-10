@@ -6,6 +6,7 @@ import {
   PROJECTILE_DEFS, EFFECT_DEFS, MAX_DIST, clamp, rollDmg,
 } from '../config.js';
 import { GameMap } from './map.js';
+import { moveWithCollision } from '../engine/physics.js';
 import {
   createPlayer, updatePlayer, damagePlayer, addHealth, addArmor, addAmmo, giveWeapon,
 } from './player.js';
@@ -382,11 +383,11 @@ export class Game {
     const p = this.player;
     for (const t of this.enemies) {
       if (t.dead || !t.solid) continue;
-      pushOut(p, t, PLAYER_RADIUS);
+      pushOut(this.map, p, t, PLAYER_RADIUS);
     }
     for (const t of this.decor) {
       if (!t.solid || t.dead) continue;
-      pushOut(p, t, PLAYER_RADIUS);
+      pushOut(this.map, p, t, PLAYER_RADIUS);
     }
   }
 
@@ -629,13 +630,16 @@ export class Game {
   }
 }
 
-function pushOut(p, t, pr) {
+// Выталкивание игрока из сущности — через коллизию со стенами, чтобы толчок
+// у угла ящика не закидывал круг игрока внутрь солидной клетки.
+function pushOut(map, p, t, pr) {
   const rr = pr + (t.radius || 0.3);
   const dx = p.x - t.x, dy = p.y - t.y;
   const d2 = dx * dx + dy * dy;
   if (d2 >= rr * rr || d2 < 1e-9) return;
   const d = Math.sqrt(d2);
   const push = (rr - d) + 0.001;
-  p.x += (dx / d) * push;
-  p.y += (dy / d) * push;
+  const res = moveWithCollision(map, p.x, p.y, (dx / d) * push, (dy / d) * push, pr);
+  p.x = res.x;
+  p.y = res.y;
 }

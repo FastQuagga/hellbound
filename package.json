@@ -1,0 +1,10 @@
+{
+  "name": "hellbound",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "HELLBOUND — клон DOOM на чистом JS (Canvas 2D raycaster)",
+  "scripts": {
+    "start": "python3 -m http.server 8777"
+  }
+}

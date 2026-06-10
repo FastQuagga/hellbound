@@ -1,0 +1,39 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  background: #000;
+  overflow: hidden;
+  font-family: 'Courier New', monospace;
+}
+
+#wrap {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#screen {
+  /* 480×300, растягивается с сохранением пропорций; пиксели не размывать */
+  width: min(100vw, calc(100vh * 1.6));
+  height: min(100vh, calc(100vw / 1.6));
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  background: #000;
+  outline: none;
+}
+
+#screen.locked { cursor: none; }
+
+#boot {
+  position: absolute;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  color: #d23b1e;
+  font-size: 22px;
+  letter-spacing: 4px;
+  text-shadow: 0 0 12px #6e1111;
+  pointer-events: none;
+}

@@ -60,6 +60,33 @@ function transposed(t) {
   return { data: out, w, h };
 }
 
+// Мип-цепочка: уровни уменьшаются вдвое усреднением 2×2 (борьба с «кипением»
+// текстур на дистанции при точечной выборке). mips[0] — исходный уровень.
+const MIP_LEVELS = 5; // 64 -> 32 -> 16 -> 8 -> 4
+function buildMips(t, levels) {
+  const mips = [t];
+  let prev = t;
+  for (let l = 1; l < levels && prev.w >= 2 && prev.h >= 2; l++) {
+    const w = prev.w >> 1, h = prev.h >> 1;
+    const data = new Uint32Array(w * h);
+    const pd = prev.data, pw = prev.w;
+    for (let y = 0; y < h; y++) {
+      const i0 = (2 * y) * pw;
+      for (let x = 0; x < w; x++) {
+        const a = pd[i0 + 2 * x], b = pd[i0 + 2 * x + 1];
+        const c = pd[i0 + pw + 2 * x], e = pd[i0 + pw + 2 * x + 1];
+        const r = ((a & 0xff) + (b & 0xff) + (c & 0xff) + (e & 0xff) + 2) >> 2;
+        const g = (((a >>> 8) & 0xff) + ((b >>> 8) & 0xff) + ((c >>> 8) & 0xff) + ((e >>> 8) & 0xff) + 2) >> 2;
+        const bl = (((a >>> 16) & 0xff) + ((b >>> 16) & 0xff) + ((c >>> 16) & 0xff) + ((e >>> 16) & 0xff) + 2) >> 2;
+        data[y * w + x] = 0xff000000 | (bl << 16) | (g << 8) | r;
+      }
+    }
+    prev = { data, w, h };
+    mips.push(prev);
+  }
+  return mips;
+}
+
 export class Raycaster {
   constructor() {
     const W = SCREEN_W;
@@ -67,8 +94,12 @@ export class Raycaster {
     this._flats = new Map();    // строко-мажорные текстуры (полы/потолки)
     this._sprites = new Map();  // строко-мажорные спрайты (с альфой)
     this._warned = new Set();
-    this._fallback = makeFallbackTexture();
+    const fbT = makeFallbackTexture();
+    // data/w/h уровня 0 — для спрайтового пути; mips — для стен/полов.
+    this._fallback = { data: fbT.data, w: fbT.w, h: fbT.h, mips: buildMips(fbT, MIP_LEVELS) };
     this._tanHalf = Math.tan(FOV / 2);
+    // Текселей пола на экранный пиксель по горизонтали = rowDist * _flatK (полы 64×64).
+    this._flatK = ((2 * this._tanHalf) / W) * 64;
 
     // Поколоночные константы камеры: cameraX в [-1,1) и угловое смещение луча для неба.
     this._camX = new Float32Array(W);
@@ -103,8 +134,14 @@ export class Raycaster {
       for (const [name, canvas] of textures) {
         const t = readCanvas(canvas);
         if (!t) continue;
-        this._flats.set(name, t);              // для per-pixel пола/потолка
-        this._walls.set(name, transposed(t));  // для колонок стен и неба
+        const flatMips = buildMips(t, MIP_LEVELS);
+        // для per-pixel пола/потолка (строко-мажорно)
+        this._flats.set(name, { data: t.data, w: t.w, h: t.h, mips: flatMips });
+        // для колонок стен и неба (колонко-мажорно, мипы транспонируются поуровнево)
+        const wallMips = [];
+        for (let i = 0; i < flatMips.length; i++) wallMips.push(transposed(flatMips[i]));
+        const w0 = wallMips[0];
+        this._walls.set(name, { data: w0.data, w: w0.w, h: w0.h, mips: wallMips });
       }
     }
     if (sprites) {
@@ -250,14 +287,20 @@ export class Raycaster {
       if (!hit) { zbuf[x] = Infinity; yTopA[x] = VH; yBotA[x] = -1; continue; }
       if (perp < 1e-4) perp = 1e-4;
 
-      const tex = this._lookup(this._walls, texName);
+      // Проекция: перпендикулярная дистанция -> высота колонны; верх/низ через pz и pitch.
+      const colH = PROJ_DIST / perp;
+
+      // Мип-уровень: спускаемся, пока следующий уровень даёт >= 1 текселя на пиксель;
+      // выбранный держит 1..2 текселя/пиксель — дальние стены не «кипят» при движении.
+      const wallMips = this._lookup(this._walls, texName).mips;
+      let lvl = 0;
+      const maxLvl = wallMips.length - 1;
+      while (lvl < maxLvl && wallMips[lvl + 1].h >= colH) lvl++;
+      const tex = wallMips[lvl];
       const tw = tex.w, th = tex.h, tdata = tex.data;
       let tx = (texFrac * tw) | 0;
       if (tx < 0) tx = 0; else if (tx >= tw) tx = tw - 1;
       if (flipTex) tx = tw - 1 - tx;
-
-      // Проекция: перпендикулярная дистанция -> высота колонны; верх/низ через pz и pitch.
-      const colH = PROJ_DIST / perp;
       const top = horizon - (1 - pz) * colH;
       const bottom = top + colH; // == horizon + pz * colH
       let y0 = top | 0; if (y0 < top) y0++;       // ceil
@@ -304,6 +347,14 @@ export class Raycaster {
       const swx = rowDist * stepFX, swy = rowDist * stepFY;
       const dF = 1 - rowDist / MAX_DIST;
       const rowBoost = boost / (1 + rowDist * 0.5);
+      // Мип-уровень строки — по максимальной плотности текселей на пиксель:
+      // по горизонтали rowDist*_flatK, по вертикали 64*rowDist/d (у горизонта
+      // соседние строки перешагивают десятки текселей — главный источник ряби).
+      let tpp = rowDist * this._flatK;
+      const vtpp = (64 * rowDist) / d;
+      if (vtpp > tpp) tpp = vtpp;
+      let flvl = 0;
+      while (flvl < MIP_LEVELS - 1 && tpp >= (2 << flvl)) flvl++;
       let vRow = 0;
       if (!isFloor) {
         // Небо: v линейно от верха экрана (0) к горизонту (skyH-1).
@@ -329,8 +380,9 @@ export class Raycaster {
             texKey = co.tex; cellL = co.light; isSky = texKey === 'SKY';
           }
           if (!isSky) {
-            const flat = this._lookup(this._flats, texKey);
-            fdata = flat.data; fw = flat.w; fh = flat.h;
+            const fm = this._lookup(this._flats, texKey).mips;
+            const ft = fm[flvl < fm.length ? flvl : fm.length - 1];
+            fdata = ft.data; fw = ft.w; fh = ft.h;
             const L = cellL * dF + rowBoost;
             let li = (L * 16) | 0;
             if (li < 0) li = 0; else if (li > 15) li = 15;

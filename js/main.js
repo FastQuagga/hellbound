@@ -29,6 +29,19 @@ const canvas = document.getElementById('screen');
 const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
 
+// Целочисленный апскейл: CSS-размер канваса кратен 480×300 в ДЕВАЙС-пикселях
+// (с учётом devicePixelRatio), иначе при дробном масштабе пиксели дублируются
+// неравномерно и картинка рябит при движении. CSS-формула остаётся фолбэком.
+function fitCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  let k = Math.min((window.innerWidth * dpr) / SCREEN_W, (window.innerHeight * dpr) / SCREEN_H);
+  if (k >= 1) k = Math.floor(k); // окно меньше 480×300 — дробный масштаб без целых
+  canvas.style.width = `${(SCREEN_W * k) / dpr}px`;
+  canvas.style.height = `${(SCREEN_H * k) / dpr}px`;
+}
+window.addEventListener('resize', fitCanvas);
+fitCanvas();
+
 window.addEventListener('error', (e) => {
   if (boot && boot.isConnected) boot.textContent = 'ОШИБКА: ' + e.message;
 });

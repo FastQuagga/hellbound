@@ -32,12 +32,20 @@ function makeFallbackTexture() {
 }
 
 // Канвас -> { data: Uint32Array (строко-мажорно, little-endian ABGR), w, h }.
+// Чтение через общий scratch-канвас с willReadFrequently: у канвасов-источников
+// контекст уже создан генераторами без этого флага, и поменять его нельзя.
+let scratch = null, scratchCtx = null;
 function readCanvas(canvas) {
   if (!canvas || !canvas.width || !canvas.height || typeof canvas.getContext !== 'function') return null;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return null;
+  if (!scratchCtx) {
+    scratch = document.createElement('canvas');
+    scratchCtx = scratch.getContext('2d', { willReadFrequently: true });
+    if (!scratchCtx) return null;
+  }
   const w = canvas.width, h = canvas.height;
-  const img = ctx.getImageData(0, 0, w, h);
+  scratch.width = w; scratch.height = h; // resize очищает scratch до прозрачного
+  scratchCtx.drawImage(canvas, 0, 0);
+  const img = scratchCtx.getImageData(0, 0, w, h);
   return { data: new Uint32Array(img.data.buffer, img.data.byteOffset, w * h), w, h };
 }
 
